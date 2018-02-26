@@ -128,7 +128,7 @@ def parse(serialized):
     return image, label, xdim, ydim, channels
 
 
-def input_fn(filenames, train=True, batch_size=64, buffer_size=512):
+def input_fn(filenames, train=True, batch_size=32, buffer_size=512):
     # Args:
     # filenames:   Filenames for the TFRecords files.
     # train:       Boolean whether training (True) or testing (False).
