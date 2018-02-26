@@ -21,10 +21,13 @@ class Dataset(object):
                 lambda x: str(pathlib.Path(x).resolve()), self.images
             ))
 
-        self.train_imgs, self.train_labels, self.test_imgs, self.test_labels \
+        self.train_imgs, self.test_imgs, self.train_labels, self.test_labels \
             = train_test_split(self.images, self.labels,
                                shuffle=True, stratify=self.labels,
-                               train_size=.6)
+                               train_size=.8)
+
+        print('training set size: {}'.format(len(self.train_imgs)))
+        print('testing set size: {}'.format(len(self.test_imgs)))
 
     def get_train_data(self):
         return self.train_imgs, self.train_labels
@@ -41,17 +44,17 @@ def get_oxford_flower_dataset(dir, segs_instead=False, **kwargs):
     imagedir = os.path.join(folder1, 'jpg')
 
     with open(os.path.join(imagedir, 'files.txt')) as f:
-        image_set = [imagedir + '/' + im for im in f.readlines()]
+        image_set = [imagedir + '/' + im.rstrip('\n') for im in f.readlines()]
 
     # there are 17 classes of flower with 80 images each.  They are sorted in the folder.
-    if labeled:
+    if not segs_instead:
         labels = []
         for i in range(0, 17):
             labels += [i] * 80
 
         return image_set, labels
     else:
-        pass  # download segmentations instead.  Possible goal if training is too fast here.
+        pass  # download segmentations instead.  Possible goal if training time permits.
 
 
 def _retrieve_dataset(url, dir, name):
