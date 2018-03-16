@@ -8,25 +8,35 @@ import dataset
 
 
 # https://www.youtube.com/watch?v=oxrcZ9uUblI  funny and good tutorial on tensorflow records
-def create_tfrecords(name='OxfordFlower', datadir=os.path.expanduser('~/OxfordFlower')):
+def create_tfrecords(name='Cifar10', datadir=os.path.expanduser('~/Cifar10')):
     # name:  Name of dataset
     # datadir:  Directory to store data in
     # returns: tuple of train and test record paths
-
-    # get or retrieve data/paths
-    data = dataset.Dataset(name, datadir)
 
     # targets for efficient tensorflow record files
     train_record_path = os.path.join(datadir, 'train.tfrecord')
     test_record_path = os.path.join(datadir, 'test.tfrecord')
 
     # run data conversion
-    convert(
-        *data.get_train_data(), train_record_path
-    )
-    convert(
-        *data.get_test_data(), test_record_path
-    )
+    if name == 'OxfordFlower':
+        # get or retrieve data/paths, oxford is already jpegs
+        data = dataset.Dataset(name, datadir)
+        convert(
+            *data.get_train_data(), train_record_path
+        )
+        convert(
+            *data.get_test_data(), test_record_path
+        )
+    elif name == 'Cifar10':
+        # have to get data from pregenerated batches...
+        convert_from_data(
+            dataset.yield_cifar_10_dataset(datadir, train=True),
+            train_record_path
+        )
+        convert_from_data(
+            dataset.yield_cifar_10_dataset(datadir, train=True),
+            test_record_path
+        )
 
     return train_record_path, test_record_path
 
@@ -36,18 +46,15 @@ def wrap_bytes(value):
     return tf.train.Feature(bytes_list=tf.train.BytesList(value=[value]))
 
 
-def wrap_int64list(value):
-    # converts int to tf object
-    return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
-
-
 def wrap_int64(value):
     # converts int to list of 1 int then to tf object
-    return wrap_int64list([value])
+    if hasattr(value, '__iter__'):
+        return tf.train.Feature(int64_list=tf.train.Int64List(value=value))
+    else:
+        return wrap_int64([value])
 
 
 def convert(image_paths, labels, record_path):
-    # Number of images. Used when printing the progress.
 
     # Open each image and write it into TFRecord.
     with tf.python_io.TFRecordWriter(record_path) as writer:
@@ -66,34 +73,65 @@ def convert(image_paths, labels, record_path):
                 tmp = np.zeros((17,), dtype=int)
                 tmp[label] = 1  # BinaryLabel array for softmax classification.
                 label = tmp.tolist()
-                wrap_label = wrap_int64list
+                wrap_label = wrap_int64
             elif isinstance(label, str):
                 # assuming we have segmentations:
                 img = imread(label)
                 label = img.tostring()
                 wrap_label = wrap_bytes
 
-            # TFRecords data storage, helper functions convert raw data to tf objects
-            data = \
-                {
-                    'image': wrap_bytes(img_bytes),
-                    'label': wrap_label(label),
-                    'xdim': wrap_int64(x),
-                    'ydim': wrap_int64(y),
-                    'channels': wrap_int64(channels)
-                }
+            # Wrap the data as Features.
+            feature = tf.train.Features(feature={
+                'image': wrap_bytes(img_bytes),
+                'label': wrap_label(label),
+                'xdim': wrap_int64(x),
+                'ydim': wrap_int64(y),
+                'channels': wrap_int64(channels)
+            })
 
-            # Wrap the data as TensorFlow Features.
-            feature = tf.train.Features(feature=data)
-
-            # Wrap again as a TensorFlow Example.
             example = tf.train.Example(features=feature)
 
-            # Serialize the data.
-            serialized = example.SerializeToString()
+            # Save current input into tfrecords file
+            writer.write(example.SerializeToString())
 
-            # Write the serialized data to the TFRecords file.
-            writer.write(serialized)
+
+def convert_from_data(data_getter, record_path):
+
+    # Open each image and write it into TFRecord.
+    with tf.python_io.TFRecordWriter(record_path) as writer:
+        for data, label in data_getter:
+
+            img = convert_images(data)
+            num, y, x, channels = img.shape
+
+            # Convert the image to raw bytes.
+            img_bytes = img.tostring()
+
+            # decide how label must be wrapped:
+            if isinstance(label, int):
+                tmp = np.zeros((10,), dtype=int)  # @hardcoded Cifar10
+                tmp[label] = 1  # BinaryLabel array for softmax classification.
+                label = tmp.tolist()
+                wrap_label = wrap_int64
+            elif isinstance(label, str):
+                # assuming we have segmentations:
+                img = imread(label)
+                label = img.tostring()
+                wrap_label = wrap_bytes
+
+            # Wrap the data as Features.
+            feature = tf.train.Features(feature={
+                'image': wrap_bytes(img_bytes),
+                'label': wrap_label(label),
+                'xdim': wrap_int64(x),
+                'ydim': wrap_int64(y),
+                'channels': wrap_int64(channels)
+            })
+
+            example = tf.train.Example(features=feature)
+
+            # Save current input into tfrecords file
+            writer.write(example.SerializeToString())
 
 
 def parse(serialized):
@@ -101,7 +139,7 @@ def parse(serialized):
     features = \
         {
             'image': tf.FixedLenFeature([], tf.string),
-            'label': tf.FixedLenFeature(17, tf.int64),
+            'label': tf.FixedLenFeature(10, tf.int64),
             'xdim': tf.FixedLenFeature(1, tf.int64),
             'ydim': tf.FixedLenFeature(1, tf.int64),
             'channels': tf.FixedLenFeature(1, tf.int64)
@@ -115,8 +153,8 @@ def parse(serialized):
     image_raw = parsed_example['image']
 
     # Decode the raw bytes to float32 tensor image
-    image = tf.decode_raw(image_raw, tf.uint8)
-    image = tf.cast(image, tf.float32)
+    image = tf.decode_raw(image_raw, tf.float32)
+    # image = tf.cast(image, tf.float32)
 
     # get image metadata
     label = parsed_example['label']
@@ -128,7 +166,7 @@ def parse(serialized):
     return image, label, xdim, ydim, channels
 
 
-def input_fn(filenames, train=True, batch_size=32, buffer_size=512):
+def input_fn(filenames, train=True, batch_size=16, buffer_size=512):
     # Args:
     # filenames:   Filenames for the TFRecords files.
     # train:       Boolean whether training (True) or testing (False).
@@ -165,7 +203,8 @@ def input_fn(filenames, train=True, batch_size=32, buffer_size=512):
     iterator = dataset.make_one_shot_iterator()
 
     # Get the next batch of images and labels, may take dimensionality info later but for now we set to _
-    images_batch, labels_batch, xdim_batch, ydim_batch, channels_batch = iterator.get_next()
+    images_batch, labels_batch, \
+        xdim_batch, ydim_batch, channels_batch = iterator.get_next()
 
     if train:
         images_batch = distort_batch(images_batch)
@@ -178,12 +217,13 @@ def input_fn(filenames, train=True, batch_size=32, buffer_size=512):
 
 
 def train_input_fn():
-    return input_fn(os.path.expanduser('~/OxfordFlower/train.tfrecord'))
+    # @hardcoded Cifar10
+    return input_fn(os.path.expanduser('~/Cifar10/train.tfrecord'))
 
 
 def test_input_fn():
     # testing set size...
-    return input_fn(os.path.expanduser('~/OxfordFlower/test.tfrecord'), train=False)
+    return input_fn(os.path.expanduser('~/Cifar10/test.tfrecord'), train=False)
 
 
 # basic helpers
@@ -203,6 +243,25 @@ def centered_crop(img, xdim, ydim):
     return img[y0:y0 + ydim, x0:x0 + xdim, :]
 
 
+def convert_images(raw):
+    """
+    Convert images from the CIFAR-10 format and
+    return a 4-dim array with shape: [image_number, height, width, channel]
+    where the pixels are floats between 0.0 and 1.0.
+    """
+
+    # Convert the raw images from the data-files to floating-points.
+    raw_float = np.array(raw, dtype=np.float32) / 255.0
+
+    # Reshape the array to 4-dimensions.
+    images = raw_float.reshape([-1, 3, 32, 32])
+
+    # Reorder the indices of the array.
+    images = images.transpose([0, 2, 3, 1])
+
+    return images
+
+
 def distort(img: tf.Tensor) -> tf.Tensor:
     img = tf.image.random_hue(img, max_delta=0.05)
     img = tf.image.random_contrast(img, lower=0.3, upper=1.0)
@@ -212,9 +271,13 @@ def distort(img: tf.Tensor) -> tf.Tensor:
 
 
 def distort_batch(image_batch: tf.Tensor) -> tf.Tensor:
-    shape = [-1, 500, 500, 3]
+    shape = [-1, 32, 32, 3]  # @hardcoded Cifar10
     image_batch = tf.reshape(image_batch, shape=shape)
     image_batch = tf.map_fn(lambda img: distort(img), image_batch)
     image_batch = tf.reshape(image_batch, shape=[-1, np.product(shape[1:])])
 
     return image_batch
+
+
+if __name__ == '__main__':
+    create_tfrecords()
