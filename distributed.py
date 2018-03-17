@@ -1,6 +1,8 @@
 #!/usr/bin/env python3
+import argparse
 import os
 import re
+import yaml
 
 from itertools import chain
 
@@ -10,34 +12,45 @@ import tfinput
 
 from model import model_fn
 
+def cli_interface():
+    parser = argparse.ArgumentParser()
+    parser.add_argument('--maxiter', '-i', type=int, required=True)
+    parser.add_argument('--name', '-n', default='ensemble')
+    parser.add_argument('--config', '-c', default='params.yml')
+
+    args = parser.parse_args()
+
+    return args
+
 
 def main():
 
     # hard params to argparse later:
-    name = 'ensemble_cnn'
-    cifar_params = {
-        'img_dim': [32, 32, 3],
-        'y_size': 10,
-        'learning_rate': .001
-    }
+    args = cli_interface()
+    name = args.name
+    config = args.config
+    maxiter = args.maxiter
+    with open(config, 'r') as fd:
+        cifar_params = yaml.load(fd)
     basedir = os.path.expanduser('~/distributed_cnn')
     os.makedirs(basedir, exist_ok=True)
 
     # network configuration
     cluster, server = configure_cluster(job_name=name)
     ntasks = cluster.num_tasks(name)
-    models = {}
+
+        
 
     for i in range(ntasks):
         with tf.device(tf.train.replica_device_setter(
-                worker_device='/job:workers/task:' + i, cluster=cluster)):
-            checkpoint = os.path.join(basedir, name + '_%s' % i)
-            models['task%s' % i] = tf.estimator.Estimator(
-                model_fn=model_fn, params=cifar_params, model_dir=checkpoint
-            )
-            models['task%s' % i].train(input_fn=tfinput.train_input_fn, max_steps=1000)
-
-
+                worker_device='/job:%s/task:%s' % (name, i), cluster=cluster)):
+            with tf.variable_scope('task%s' % i):
+                cifar_params['task'] = '_%s_%s' % (name, i)
+                checkpoint = os.path.join(basedir, name + '_%s' % i)
+                model = tf.estimator.Estimator(
+                    model_fn=model_fn, params=cifar_params, model_dir=checkpoint
+                )
+                model.train(input_fn=tfinput.train_input_fn, max_steps=maxiter)
 
 
 def configure_cluster(**kwargs):
@@ -59,7 +72,7 @@ def configure_cluster(**kwargs):
 
     hosts = [basename + str(n) + ':2222' for n in nodenums]
 
-    cluster = tf.train.ClusterSpec({'workers': hosts})
+    cluster = tf.train.ClusterSpec({'ensemble': hosts})
 
     # individuals
     task = int(os.environ['SLURM_PROCID'])
