@@ -14,12 +14,33 @@ def model_fn(features, labels, mode, params):
     graph = x_image
 
     graph = tf.layers.conv2d(graph, name='layer_conv2d_1', padding='same',
-                          filters=64, kernel_size=5, activation=tf.nn.relu)
-    graph = tf.layers.dropout(graph, rate=0.3, training=training)
+                          filters=16, kernel_size=3, activation=tf.nn.relu)
+    graph = tf.layers.dropout(graph, rate=0.4, training=training)
     graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_2', strides=2)
     graph = tf.layers.conv2d(graph, name='layer_conv2d_2', padding='same',
-                              filters=32, kernel_size=5, activation=tf.nn.relu)
+                              filters=16, kernel_size=3, activation=tf.nn.relu)
+    graph = tf.layers.dropout(graph, rate=0.4, training=training)
+
+    graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_3', strides=2)
+    graph = tf.layers.conv2d(graph, name='layer_conv2d_3', padding='same',
+                             filters=16, kernel_size=3, activation=tf.nn.relu)
     graph = tf.layers.dropout(graph, rate=0.3, training=training)
+
+    graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_4', strides=2)
+    graph = tf.layers.conv2d(graph, name='layer_conv2d_4', padding='same',
+                             filters=16, kernel_size=5, activation=tf.nn.relu)
+    graph = tf.layers.dropout(graph, rate=0.3, training=training)
+
+    graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_5', strides=2)
+    graph = tf.layers.conv2d(graph, name='layer_conv2d_5', padding='same',
+                             filters=16, kernel_size=5, activation=tf.nn.relu)
+    graph = tf.layers.dropout(graph, rate=0.3, training=training)
+
+    graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_6', strides=2)
+    graph = tf.layers.conv2d(graph, name='layer_conv2d_6', padding='same',
+                             filters=16, kernel_size=5, activation=tf.nn.relu)
+    graph = tf.layers.dropout(graph, rate=0.3, training=training)
+
     # graph = tf.layers.max_pooling2d(graph, pool_size=2, name='layer_maxpool_p1_2', strides=2)
 
     graph = tf.layers.flatten(graph, name='flatten')
